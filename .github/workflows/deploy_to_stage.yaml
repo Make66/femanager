@@ -1,0 +1,44 @@
+name: typo3-ext-femanager deploy-to-stage
+run-name: ${{ github.actor }} deploys a push to stage
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout (nur für evtl. Build-Schritte)
+        uses: actions/checkout@v5
+
+      - name: Known Hosts konfigurieren
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -p "${{ vars.SSH_PORT }}" "${{ vars.SSH_HOST_STAGE }}" >> ~/.ssh/known_hosts
+
+      - name: Remote Deployment ausführen
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ vars.SSH_HOST_STAGE }}
+          username: ${{ vars.SSH_USER }}
+          port: ${{ vars.SSH_PORT }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            set -e
+            cd ${{ vars.REPO_PATH }}
+
+            # SSH Deploy Key für GitHub-Repo konfigurieren (not needed for repos set-up with ssh
+            git remote set-url origin git@github.com:${{ github.repository_owner }}/${{ github.event.repository.name }}.git
+
+            # SSH-Key laden
+            eval $(ssh-agent -s)
+            echo "${{ secrets.SSH_PRIVATE_KEY }}" | tr -d '\r' | ssh-add -
+
+            # Einfacher Pull
+            git pull origin main
+            cd ../../
+            vendor/bin/typo3 cache:flush
+            vendor/bin/typo3 extension:setup
+            composer dump
