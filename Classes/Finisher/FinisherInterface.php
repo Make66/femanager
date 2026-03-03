@@ -4,42 +4,37 @@ declare(strict_types=1);
 
 namespace In2code\Femanager\Finisher;
 
-use In2code\Femanager\Domain\Model\User;
-
-/**
- * Interface FinisherInterface
- */
 interface FinisherInterface
 {
-    /**
-     * @return User
-     */
     public function getUser();
 
     /**
-     * @param User $user
-     * @return AbstractFinisher
+     * @deprecated function signature will chance in V14
      */
     public function setUser($user);
 
     /**
-     * Get settings
-     *
-     * @return array
+     * @deprecated function name will chance in V14 to getTypoScriptSettings()
      */
     public function getSettings();
 
     /**
-     * Set settings
-     *
-     * @param array $settings
-     * @return AbstractFinisher
+     * @deprecated function name and signature will chance in V14 to setTypoScriptSettings(array $typoScriptSettings): FinisherInterface;
      */
     public function setSettings($settings);
 
+    /**
+     * @deprecated function signature will chance in V14
+     */
     public function getActionMethodName();
 
+    /**
+     * @deprecated function signature will chance in V14
+     */
     public function setActionMethodName(string $actionMethodName);
 
+    /**
+     * @deprecated function signature will chance in V14
+     */
     public function initializeFinisher();
 }

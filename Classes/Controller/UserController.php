@@ -9,7 +9,6 @@ use In2code\Femanager\Domain\Model\User;
 use In2code\Femanager\Domain\Validator\ClientsideValidator;
 use In2code\Femanager\Event\ImpersonateEvent;
 use In2code\Femanager\Utility\BackendUserUtility;
-use In2code\Femanager\Utility\FrontendUtility;
 use In2code\Femanager\Utility\LocalizationUtility;
 use In2code\Femanager\Utility\UserUtility;
 use Psr\Http\Message\ResponseInterface;
@@ -17,11 +16,10 @@ use TYPO3\CMS\Core\Error\Http\UnauthorizedException;
 use TYPO3\CMS\Core\Http\RedirectResponse;
 use TYPO3\CMS\Core\Type\ContextualFeedbackSeverity;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
+use TYPO3\CMS\Extbase\Mvc\Exception\NoSuchArgumentException;
 use TYPO3\CMS\Extbase\Persistence\ObjectStorage;
 
 /**
- * Class UserController
- *
  * @SuppressWarnings(PHPMD.CouplingBetweenObjects)
  */
 class UserController extends AbstractFrontendController
@@ -38,14 +36,14 @@ class UserController extends AbstractFrontendController
                 'filter' => $filter,
             ]
         );
-        $this->assignForAll();
+        $this->addDefaultViewVariables();
         return $this->htmlResponse();
     }
 
     public function showAction(?User $user = null): ResponseInterface
     {
         $this->view->assign('user', $this->getUser($user));
-        $this->assignForAll();
+        $this->addDefaultViewVariables();
         return $this->htmlResponse();
     }
 
@@ -65,24 +63,33 @@ class UserController extends AbstractFrontendController
             $this->addFlashMessage(
                 LocalizationUtility::translateByState(Log::STATUS_PROFILEUPDATENOTAUTHORIZED),
                 '',
-                ContextualFeedbackSeverity::ERROR);
+                ContextualFeedbackSeverity::ERROR
+            );
         }
 
-        return $this->redirectToUri(FrontendUtility::getUriToCurrentPage());
+        return $this->redirectToUri(
+            $this->contentObject->typoLink_URL(
+                [
+                    'parameter' => $this->request->getAttribute('frontend.page.information')->getId(),
+                ]
+            )
+        );
     }
 
+    /**
+     * @throws NoSuchArgumentException
+     */
     public function validateAction(): ResponseInterface
     {
-        $requestBody = $this->request->getParsedBody();
-        $validation = $requestBody['tx_femanager_validation']['validation'] ?? '';
-        $value =  $requestBody['tx_femanager_validation']['value'] ?? '';
-        $field =  $requestBody['tx_femanager_validation']['field'] ?? '';
-        // TODO: string
-        $user =  $requestBody['tx_femanager_validation']['user'] ?? null;
-        $additionalValue =  $requestBody['tx_femanager_validation']['additionalValue'] ?? '';
-        $plugin =  (int)$requestBody['tx_femanager_validation']['plugin'];
-        $pluginName =  $requestBody['tx_femanager_validation']['pluginName'] ?? '';
-        $referrerAction = $requestBody['tx_femanager_validation']['referrerAction'] ?? '';
+        $extbaseArguments = $this->request->getAttribute('extbase');
+        $validation = $extbaseArguments->getArgument('validation') ?? '';
+        $value = $extbaseArguments->getArgument('value') ?? '';
+        $field = $extbaseArguments->getArgument('field') ?? '';
+        $user = $extbaseArguments->getArgument('user') ?? null;
+        $additionalValue = $extbaseArguments->getArgument('additionalValue') ?? '';
+        $pluginUid = (int)$extbaseArguments->getArgument('plugin');
+        $pluginNamespace = $extbaseArguments->getArgument('pluginName') ?? '';
+        $referrerAction = $extbaseArguments->getArgument('referrerAction') ?? '';
 
         if ($user !== null) {
             $user = $this->userRepository->findByUid((int)$user);
@@ -91,14 +98,14 @@ class UserController extends AbstractFrontendController
         $clientsideValidator = GeneralUtility::makeInstance(ClientsideValidator::class);
         $result = $clientsideValidator
             ->setValidationSettingsString($validation)
+            ->setPluginNamespace($pluginNamespace)
             ->setValue($value)
             ->setFieldName($field)
             ->setUser($user)
             ->setAdditionalValue($additionalValue)
-            ->setPlugin($plugin)
-            ->setPluginName($pluginName)
-            ->setActionName($referrerAction)
-            ->validateField($pluginName);
+            ->setPluginUid($pluginUid)
+            ->setReferrerActionName($referrerAction)
+            ->validateField();
 
         $this->view->assignMultiple(
             [
@@ -122,7 +129,18 @@ class UserController extends AbstractFrontendController
     {
         $this->eventDispatcher->dispatch(new ImpersonateEvent($user, $GLOBALS['BE_USER']?->user['uid']));
 
-        if (!BackendUserUtility::isAdminAuthentication()) {
+        if (!BackendUserUtility::isAdmin()) {
+            $this->logUtility->log(
+                LOG::STATUS_LOGIN_AS_DENIED,
+                $user,
+                [
+                    'backendUser' => [
+                        'uid' => $GLOBALS['BE_USER']?->user['uid'],
+                        'username' => $GLOBALS['BE_USER']->user['username']
+                    ]
+                ]
+            );
+            $this->persistenceManager->persistAll();
             throw new UnauthorizedException(LocalizationUtility::translate('error_not_authorized'), 1516373787864);
         }
 
@@ -130,6 +148,17 @@ class UserController extends AbstractFrontendController
             ->setTargetPageUid($redirectPid)
             ->setCreateAbsoluteUri(true)
             ->build();
+
+        $this->logUtility->log(
+            LOG::STATUS_LOGIN_AS,
+            $user,
+            [
+                'backendUser' => [
+                    'uid' => $GLOBALS['BE_USER']?->user['uid'],
+                    'username' => $GLOBALS['BE_USER']->user['username']
+                ]
+            ]
+        );
 
         // create a new session for the frontend user
         UserUtility::login($user);

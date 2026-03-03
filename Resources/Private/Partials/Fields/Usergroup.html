@@ -16,13 +16,13 @@
 					id="femanager_field_usergroup"
 					name="user[usergroup][0]"
 					options="{allUserGroups}"
+					property="usergroup"
 					optionValueField="uid"
 					optionLabelField="title"
 					sortByOptionLabel="1"
 					prependOptionLabel="{f:translate(key:'pleaseChoose')}"
 					prependOptionValue=""
 					class="form-control"
-					value="{femanager:Misc.GetFirst(objectStorage:user.usergroup)}"
 					additionalAttributes="{femanager:Validation.FormValidationData(settings: settings, fieldName: 'usergroup')}" />
 		</div>
 	</div>
@@ -53,7 +53,6 @@
 						optionLabelField="title"
 						sortByOptionLabel="1"
 						class="form-control"
-						value="{femanager:Misc.GetFirst(objectStorage:user.usergroup)}"
 						additionalAttributes="{femanager:Validation.FormValidationData(settings: settings, fieldName: 'usergroup')}" />
 			</div>
 		</div>

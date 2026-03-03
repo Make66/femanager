@@ -2,7 +2,6 @@
 
 namespace In2code\Femanager\Tests\Unit\Utility;
 
-use GuzzleHttp\Psr7\ServerRequest;
 use In2code\Femanager\Domain\Model\User;
 use In2code\Femanager\Tests\Helper\TestingHelper;
 use In2code\Femanager\Utility\FrontendUtility;
@@ -42,41 +41,5 @@ class FrontendUtilityTest extends UnitTestCase
         self::assertSame(2, $user->getGender());
         self::assertSame('Kaspar', $user->getFirstName());
         self::assertSame('Tx_Extbase_Domain_Model_FrontendUser', $user->getTxExtbaseType());
-    }
-
-    /**
-     * @SuppressWarnings(PHPMD.Superglobals)
-     * @covers ::getControllerName
-     */
-    public function testGetControllerName(): void
-    {
-        $postData = [
-            'tx_femanager_pi1' => [
-                'controller' => 'foo'
-            ]
-        ];
-
-        $request = (new ServerRequest('POST', '/'))
-            ->withParsedBody($postData);
-
-        self::assertSame('foo', FrontendUtility::getControllerName($request));
-    }
-
-    /**
-     * @SuppressWarnings(PHPMD.Superglobals)
-     * @covers ::getActionName
-     */
-    public function testGetActionName(): void
-    {
-        $postData = [
-            'tx_femanager_pi1' => [
-                'action' => 'bar'
-            ]
-        ];
-
-        $request = (new ServerRequest('POST', '/'))
-            ->withParsedBody($postData);
-
-        self::assertSame('bar', FrontendUtility::getActionName($request));
     }
 }

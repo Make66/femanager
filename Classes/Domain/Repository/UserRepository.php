@@ -24,7 +24,7 @@ class UserRepository extends Repository
      * @param int $uid fe_users UID
      * @return User
      */
-    public function findByUid($uid)
+    public function findByUid($uid): ?User
     {
         $query = $this->createQuery();
         $this->ignoreEnableFieldsAndStoragePage($query);
@@ -32,6 +32,19 @@ class UserRepository extends Repository
         $and = $query->equals('uid', $uid);
 
         /** @var User $user */
+        $user = $query->matching($query->logicalAnd($and))->execute()->getFirst();
+
+        return $user;
+    }
+
+    public function findByUsername(string $username): ?User
+    {
+        $query = $this->createQuery();
+        $this->ignoreEnableFieldsAndStoragePage($query);
+        $query->getQuerySettings()->setRespectSysLanguage(false);
+        $and = $query->equals('username', $username);
+
+        /** @var User|null $user */
         $user = $query->matching($query->logicalAnd($and))->execute()->getFirst();
 
         return $user;
@@ -162,13 +175,25 @@ class UserRepository extends Repository
      *
      * @param array $filter Filter Array
      */
-    public function findAllInBackend(array $filter): QueryResultInterface|array
+    public function findOnPageByBackendFilter(array $filter): QueryResultInterface|array
     {
         $query = $this->createQuery();
         $this->ignoreEnableFieldsAndStoragePage($query);
         $and = [$query->greaterThan('uid', 0)];
         $and = $this->filterByPage($and, $query);
         $and = $this->filterBySearchword($filter, $query, $and);
+
+        $query->matching($query->logicalAnd(...$and));
+        $query->setOrderings(['username' => QueryInterface::ORDER_ASCENDING]);
+
+        return $query->execute();
+    }
+
+    public function findAllWithoutDeleted(): QueryResultInterface
+    {
+        $query = $this->createQuery();
+        $this->ignoreEnableFieldsAndStoragePage($query);
+        $and = [$query->greaterThan('uid', 0)];
 
         $query->matching($query->logicalAnd(...$and));
         $query->setOrderings(['username' => QueryInterface::ORDER_ASCENDING]);
@@ -210,7 +235,7 @@ class UserRepository extends Repository
     {
         if (BackendUtility::getPageIdentifier() > 0) {
             $and[] = $query->in('pid', $this->getTreeList(BackendUtility::getPageIdentifier()));
-        } elseif (!BackendUserUtility::isAdminAuthentication()) {
+        } elseif (!BackendUserUtility::isAdmin()) {
             $and[] = $query->equals('uid', 0);
         }
 
@@ -230,7 +255,6 @@ class UserRepository extends Repository
                 $orConditions[] = $query->like('email', '%' . $searchword . '%');
                 $orConditions[] = $query->like('fax', '%' . $searchword . '%');
                 $orConditions[] = $query->like('first_name', '%' . $searchword . '%');
-                $orConditions[] = $query->like('image', '%' . $searchword . '%');
                 $orConditions[] = $query->like('last_name', '%' . $searchword . '%');
                 $orConditions[] = $query->like('middle_name', '%' . $searchword . '%');
                 $orConditions[] = $query->like('name', '%' . $searchword . '%');
@@ -262,7 +286,7 @@ class UserRepository extends Repository
     protected function getTreeList($pageIdentifier): array
     {
         $pageTreeService = GeneralUtility::makeInstance(PageTreeService::class);
-        $treeList = $pageTreeService->getTreeList($pageIdentifier, 99, 0, '1');
+        $treeList = $pageTreeService->getTreeList($pageIdentifier, 99);
 
         return GeneralUtility::trimExplode(',', (string)$treeList, true);
     }

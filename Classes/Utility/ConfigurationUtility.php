@@ -124,21 +124,19 @@ class ConfigurationUtility extends AbstractUtility
         return $configuration['useFluidMail'] === '1';
     }
 
-
     /**
      * Get complete Typoscript or only a special value by a given path
      *
      * @param string $path "misc.uploadFolder" or empty for complete TypoScript array
-     * @return string
      * @codeCoverageIgnore
      */
-    public static function getConfiguration(string $path = '', ?string $pluginName = null)
+    public static function getConfiguration(string $path = '', ?string $pluginNamespace = null): array|string
     {
         $configurationManager = GeneralUtility::makeInstance(ConfigurationManagerInterface::class);
         $typoscript = $configurationManager->getConfiguration(
             ConfigurationManagerInterface::CONFIGURATION_TYPE_SETTINGS,
             'Femanager',
-            $pluginName
+            $pluginNamespace
         );
         if ($path !== '' && $path !== '0') {
             return ArrayUtility::getValueByPath($typoscript, $path, '.');
@@ -152,8 +150,8 @@ class ConfigurationUtility extends AbstractUtility
      */
     public static function isBackendModuleFilterUserConfirmation(): bool
     {
-        $config = BackendUserUtility::getBackendUserAuthentication()->getTSConfig(
-        )['tx_femanager.']['UserBackend.']['confirmation.']['filter.']['userConfirmation'] ?? false;
+        $config = BackendUserUtility::getBackendUserAuthentication()
+            ->getTSConfig()['tx_femanager.']['UserBackend.']['confirmation.']['filter.']['userConfirmation'] ?? false;
 
         return (bool)$config;
     }
@@ -163,8 +161,15 @@ class ConfigurationUtility extends AbstractUtility
      */
     public static function isResendUserConfirmationRequestActive(): bool
     {
-        $config = BackendUserUtility::getBackendUserAuthentication()->getTSConfig(
-        )['tx_femanager.']['UserBackend.']['confirmation.']['ResendUserConfirmationRequest'] ?? false;
+        $config = BackendUserUtility::getBackendUserAuthentication()
+            ->getTSConfig()['tx_femanager.']['UserBackend.']['confirmation.']['ResendUserConfirmationRequest'] ?? false;
+        return (bool)$config;
+    }
+
+    public static function isEnableLoginAsActive(): bool
+    {
+        $config = BackendUserUtility::getBackendUserAuthentication()
+            ->getTSConfig()['tx_femanager.']['UserBackend.']['enableLoginAs'] ?? false;
         return (bool)$config;
     }
 

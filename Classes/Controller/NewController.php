@@ -20,9 +20,9 @@ use In2code\Femanager\Utility\HashUtility;
 use In2code\Femanager\Utility\LocalizationUtility;
 use In2code\Femanager\Utility\StringUtility;
 use In2code\Femanager\Utility\UserUtility;
-use JsonException;
 use Psr\Http\Message\ResponseInterface;
 use TYPO3\CMS\Core\Crypto\PasswordHashing\InvalidPasswordHashException;
+use TYPO3\CMS\Core\Http\JsonResponse;
 use TYPO3\CMS\Core\Http\PropagateResponseException;
 use TYPO3\CMS\Core\Http\ServerRequestFactory;
 use TYPO3\CMS\Core\Type\ContextualFeedbackSeverity;
@@ -32,17 +32,12 @@ use TYPO3\CMS\Extbase\Persistence\Exception\IllegalObjectTypeException;
 use TYPO3\CMS\Extbase\Persistence\Exception\UnknownObjectException;
 
 /**
- * Class NewController
- *
  * @SuppressWarnings(PHPMD.CouplingBetweenObjects)
  */
 class NewController extends AbstractFrontendController
 {
     /**
      * Render registration form
-     *
-     * @param User|null $user
-     * @throws JsonException
      */
     public function newAction(): ResponseInterface
     {
@@ -51,15 +46,14 @@ class NewController extends AbstractFrontendController
                 'allUserGroups' => $this->allUserGroups,
             ]
         );
-        $this->assignForAll();
+        $this->addDefaultViewVariables();
+
         return $this->htmlResponse();
     }
 
     /**
-     * action create
-     *
      * @throws IllegalObjectTypeException
-     * @throws InvalidPasswordHashException
+     * @throws InvalidPasswordHashException|PropagateResponseException
      */
     #[Validate(['validator' => ServersideValidator::class, 'param' => 'user'])]
     #[Validate(['validator' => PasswordValidator::class, 'param' => 'user'])]
@@ -85,12 +79,25 @@ class NewController extends AbstractFrontendController
 
         UserUtility::hashPassword($user, ConfigurationUtility::getValue('new/misc/passwordSave', $this->settings));
 
+        // revalidate user after modification
+        $validationErrors = $this->validationService->doServersideValidation($user, $this->request);
+        if (!empty($validationErrors)) {
+            foreach ($validationErrors as $validationError) {
+                $this->addFlashMessage(
+                    $validationError->getMessage(),
+                    $validationError->getTitle(),
+                    $validationError->getSeverity()
+                );
+            }
+            return $this->redirect('new');
+        }
+
         $this->eventDispatcher->dispatch(new BeforeUserCreateEvent($user));
         $this->ratelimiterService->consumeSlot();
 
         $response = $this->isAllConfirmed() ? $this->createAllConfirmed($user) : $this->createRequest($user);
 
-        if ($response instanceof \Psr\Http\Message\ResponseInterface) {
+        if ($response instanceof ResponseInterface) {
             return $response;
         }
 
@@ -101,22 +108,20 @@ class NewController extends AbstractFrontendController
      * Dispatcher action for every confirmation request
      *
      * @param int $user User UID (user could be hidden)
-     * @param string $hash Given hash
-     * @param string $status
-     *              "userConfirmation", "userConfirmationRefused", "adminConfirmation",
+     * @param string $status "userConfirmation", "userConfirmationRefused", "adminConfirmation",
      *              "adminConfirmationRefused", "adminConfirmationRefusedSilent"
-     * @param string|null $adminHash
-     * @return ResponseInterface
      * @throws IllegalObjectTypeException
-     * @throws JsonException
      * @throws PropagateResponseException
      * @throws UnknownObjectException
-     * @SuppressWarnings(PHPMD.ExitExpression)
      *
      * @todo refactor the complete status workflow for V14
      */
-    public function confirmCreateRequestAction(int $user, string $hash, string $status = 'adminConfirmation', ?string $adminHash = null): \Psr\Http\Message\ResponseInterface
-    {
+    public function confirmCreateRequestAction(
+        int $user,
+        string $hash,
+        string $status = 'adminConfirmation',
+        ?string $adminHash = null
+    ): ResponseInterface {
         $backend = false;
 
         $user = $this->userRepository->findByUid($user);
@@ -152,7 +157,7 @@ class NewController extends AbstractFrontendController
                     'hash' => $hash,
                 ]
             );
-            $this->assignForAll();
+            $this->addDefaultViewVariables();
             return $this->htmlResponse();
         }
 
@@ -167,7 +172,7 @@ class NewController extends AbstractFrontendController
                     'hash' => $hash,
                 ]
             );
-            $this->assignForAll();
+            $this->addDefaultViewVariables();
             return $this->htmlResponse();
         }
 
@@ -191,7 +196,7 @@ class NewController extends AbstractFrontendController
                     'hash' => $hash,
                 ]
             );
-            $this->assignForAll();
+            $this->addDefaultViewVariables();
             return $this->htmlResponse();
         }
 
@@ -217,7 +222,7 @@ class NewController extends AbstractFrontendController
                     'hash' => $hash,
                 ]
             );
-            $this->assignForAll();
+            $this->addDefaultViewVariables();
             return $this->htmlResponse();
         }
 
@@ -234,12 +239,8 @@ class NewController extends AbstractFrontendController
             $this->persistenceManager->persistAll();
             $event = new UserWasConfirmedByAdminEvent($request, $user);
             $this->eventDispatcher->dispatch($event);
-            /**
-             * this request was triggered via Backend Module "Frontend users",
-             * so we stop here and provide a feedback to the BE
-             */
-            echo json_encode(['status' => 'okay']) . PHP_EOL;
-            die();
+            // Backend request - return JSON response
+            return new JsonResponse(['status' => 'okay']);
         }
 
         if ($furtherFunctions) {
@@ -254,7 +255,7 @@ class NewController extends AbstractFrontendController
      *
      * @return bool allow further functions
      * @throws IllegalObjectTypeException
-     * @throws UnknownObjectException
+     * @throws UnknownObjectException|PropagateResponseException
      */
     protected function statusUserConfirmation(User $user, string $hash, string $status): bool
     {
@@ -325,15 +326,13 @@ class NewController extends AbstractFrontendController
     /**
      * Status action: Admin confirmation
      *
-     * @param $hash
-     * @param $status
      * @return bool allow further functions
      * @throws IllegalObjectTypeException
+     * @throws PropagateResponseException
      * @throws UnknownObjectException
-     *
      * @SuppressWarnings(PHPMD.BooleanArgumentFlag)
      */
-    protected function statusAdminConfirmation(User $user, $hash, string $status, bool $backend = false): bool
+    protected function statusAdminConfirmation(User $user, string $hash, string $status, bool $backend = false): bool
     {
         if (HashUtility::validHash($hash, $user)) {
             if ($user->getTxFemanagerConfirmedbyadmin()) {
@@ -370,12 +369,10 @@ class NewController extends AbstractFrontendController
     /**
      * Status action: Admin refused profile creation (normal or silent)
      *
-     * @param $hash
-     * @param $status
      * @return bool allow further functions
      * @throws IllegalObjectTypeException
      */
-    protected function statusAdminConfirmationRefused(User $user, $hash, $status): bool
+    protected function statusAdminConfirmationRefused(User $user, string $hash, string $status): bool
     {
         if (HashUtility::validHash($hash, $user)) {
             $this->logUtility->log(Log::STATUS_REGISTRATIONREFUSEDADMIN, $user);
@@ -414,7 +411,7 @@ class NewController extends AbstractFrontendController
      */
     public function createStatusAction(): ResponseInterface
     {
-        $this->assignForAll();
+        $this->addDefaultViewVariables();
         return $this->htmlResponse();
     }
 
@@ -445,7 +442,7 @@ class NewController extends AbstractFrontendController
     /**
      * Send email to user for confirmation
      */
-    protected function createUserConfirmationRequest(User $user): \Psr\Http\Message\ResponseInterface
+    protected function createUserConfirmationRequest(User $user): ResponseInterface
     {
         $this->sendCreateUserConfirmationMail($user);
         $this->addFlashMessage(LocalizationUtility::translate('createRequestWaitingForUserConfirm'));
@@ -455,7 +452,7 @@ class NewController extends AbstractFrontendController
     /**
      * Send email to admin for confirmation
      */
-    protected function createAdminConfirmationRequest(User $user)
+    protected function createAdminConfirmationRequest(User $user): void
     {
         $aacService = GeneralUtility::makeInstance(
             AutoAdminConfirmationService::class,
@@ -522,7 +519,7 @@ class NewController extends AbstractFrontendController
             $mail = $result['user']['email'] ?? '';
             if ($mail && GeneralUtility::validEmail($mail)) {
                 $user = $this->userRepository->findFirstByEmail($mail);
-                if (is_a($user, User::class)) {
+                if ($user instanceof User) {
                     $this->sendCreateUserConfirmationMail($user);
                     $this->addFlashMessage(
                         LocalizationUtility::translate('resendConfirmationMailSend'),

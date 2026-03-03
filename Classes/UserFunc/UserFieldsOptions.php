@@ -4,103 +4,76 @@ declare(strict_types=1);
 
 namespace In2code\Femanager\UserFunc;
 
-use In2code\Femanager\Utility\StringUtility;
 use TYPO3\CMS\Backend\Utility\BackendUtility;
 use TYPO3\CMS\Core\Localization\LanguageService;
+use TYPO3\CMS\Core\Localization\LanguageServiceFactory;
+use TYPO3\CMS\Core\Schema\Struct\SelectItem;
 use TYPO3\CMS\Core\Utility\ExtensionManagementUtility;
-use TYPO3\CMS\Core\Utility\GeneralUtility;
 
-/**
- * Class UserFieldsOptions
- */
 class UserFieldsOptions
 {
-    /**
-     * @var LanguageService
-     */
-    protected $languageService;
+    protected LanguageService $languageService;
+    protected string $localLangPrefix = 'LLL:EXT:femanager/Resources/Private/Language/locallang_db.xlf:';
 
-    /**
-     * @var string
-     */
-    protected $localLangPrefix = 'LLL:EXT:femanager/Resources/Private/Language/locallang_db.xlf:';
+    public function __construct(protected readonly LanguageServiceFactory $languageServiceFactory)
+    {
+        $this->languageService = $this->languageServiceFactory->create('default');
+    }
 
     /**
      * Add options to FlexForm Selection - Options can be defined in TSConfig
      */
     public function addOptions(array &$params): void
     {
-        $this->initialize();
-        $tSconfig = BackendUtility::getPagesTSconfig($this->getPid());
         $this->addCaptchaOption($params);
         $this->addStateOption($params);
-        $tab = $params['config']['itemsProcFuncTab'] . '.';
-        if (!empty($tSconfig['tx_femanager.']['flexForm.'][$tab]['addFieldOptions.'])) {
-            $options = $tSconfig['tx_femanager.']['flexForm.'][$tab]['addFieldOptions.'];
-            foreach ((array)$options as $value => $label) {
-                $params['items'][] = [
-                    StringUtility::startsWith($label, 'LLL:') ? $this->languageService->sL($label) : $label,
-                    $value,
-                ];
+
+        $pid = (int)($params['effectivePid'] ?? 0);
+        $tSconfig = BackendUtility::getPagesTSconfig($pid);
+
+        $tab = $params['config']['itemsProcFuncTab'] ?? '';
+        $fieldOptions = $tSconfig['tx_femanager.']['flexForm.'][$tab . '.']['addFieldOptions.'] ?? [];
+
+        if (empty($fieldOptions)) {
+            return;
+        }
+
+        foreach ($fieldOptions as $value => $label) {
+            if (str_ends_with((string)$value, '.')) {
+                continue;
             }
+
+            $translatedLabel = str_starts_with((string)$label, 'LLL:')
+                ? $this->languageService->sL($label)
+                : $label;
+
+            $params['items'][] = new SelectItem(
+                'select',
+                $translatedLabel,
+                $value,
+            );
         }
     }
 
-    /**
-     * Add captcha option
-     */
-    protected function addCaptchaOption(array &$params)
+    protected function addCaptchaOption(array &$params): void
     {
         if (ExtensionManagementUtility::isLoaded('sr_freecap')) {
-            $params['items'][] = [
+            $params['items'][] = new SelectItem(
+                'select',
                 $this->languageService->sL($this->localLangPrefix . 'tx_femanager_domain_model_user.captcha'),
-                'captcha',
-            ];
+                'captcha'
+            );
         }
     }
 
-    /**
-     * Add captcha option
-     */
-    protected function addStateOption(array &$params)
+    protected function addStateOption(array &$params): void
     {
         if (ExtensionManagementUtility::isLoaded('static_info_tables')) {
-            $params['items'][] = [
+            $params['items'][] = new SelectItem(
+                'select',
                 $this->languageService->sL($this->localLangPrefix . 'tx_femanager_domain_model_user.state'),
-                'state',
-            ];
+                'state'
+            );
         }
-    }
-
-    /**
-     * Read pid from current URL
-     *        URL example:
-     *        http://femanager.localhost.de/typo3/alt_doc.php?&returnUrl=
-     *        %2Ftypo3%2Fsysext%2Fcms%2Flayout%2Fdb_layout.php
-     *        %3Fid%3D17%23element-tt_content-14
-     *        &edit[tt_content][14]=edit
-     */
-    protected function getPid(): int
-    {
-        $pid = 0;
-        $backUrl = str_replace('?', '&', (string)($GLOBALS['TYPO3_REQUEST']->getParsedBody()['returnUrl'] ?? $GLOBALS['TYPO3_REQUEST']->getQueryParams()['returnUrl'] ?? null));
-        $urlParts = GeneralUtility::trimExplode('&', $backUrl, true);
-        foreach ($urlParts as $part) {
-            if (stristr((string)$part, 'id=')) {
-                $pid = str_replace('id=', '', (string)$part);
-            }
-        }
-
-        return (int)$pid;
-    }
-
-    /**
-     * Initialize
-     *
-     * @SuppressWarnings(PHPMD.Superglobals)
-     */
-    protected function initialize()
-    {
-        $this->languageService = $GLOBALS['LANG'];
     }
 }

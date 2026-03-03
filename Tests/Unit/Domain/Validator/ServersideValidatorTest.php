@@ -5,9 +5,7 @@ namespace In2code\Femanager\Tests\Unit\Domain\Validator;
 use In2code\Femanager\Domain\Model\User;
 use In2code\Femanager\Domain\Model\UserGroup;
 use In2code\Femanager\Domain\Repository\UserRepository;
-use In2code\Femanager\Domain\Service\PluginService;
 use In2code\Femanager\Domain\Validator\ServersideValidator;
-use In2code\Femanager\Tests\Unit\Fixture\Domain\Validator\AbstractValidator as AbstractValidatorFixture;
 use PHPUnit\Framework\MockObject\MockObject;
 use Psr\EventDispatcher\ListenerProviderInterface;
 use TYPO3\CMS\Core\EventDispatcher\EventDispatcher;
@@ -37,8 +35,7 @@ class ServersideValidatorTest extends UnitTestCase
             [
                 new UserRepository(),
                 $this->getMockBuilder(ConfigurationManagerInterface::class)->disableOriginalConstructor()->getMock(),
-                new PluginService(),
-                $eventDispatcher
+                $eventDispatcher,
             ]
         );
     }

@@ -8,19 +8,16 @@ use In2code\Femanager\Utility\BackendUserUtility;
 use TYPO3Fluid\Fluid\Core\ViewHelper\AbstractViewHelper;
 
 /**
- * Class IsBackendAdministratorAuthenticationViewHelper
- *
  * @SuppressWarnings(PHPMD.LongClassName)
+ * @deprecated will be removed with V14
  */
 class IsBackendAdministratorAuthenticationViewHelper extends AbstractViewHelper
 {
     /**
      * Check if a backenduser-administrator is logged in
-     *
-     * @return bool
      */
-    public function render()
+    public function render(): bool
     {
-        return BackendUserUtility::isAdminAuthentication();
+        return BackendUserUtility::isAdmin();
     }
 }

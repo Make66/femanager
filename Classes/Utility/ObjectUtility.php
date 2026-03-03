@@ -11,21 +11,16 @@ use TYPO3\CMS\Extbase\Mvc\RequestInterface;
 use TYPO3\CMS\Extbase\Persistence\ObjectStorage;
 use TYPO3\CMS\Extbase\Reflection\Exception\PropertyNotAccessibleException;
 use TYPO3\CMS\Extbase\Reflection\ObjectAccess;
-use TYPO3\CMS\Frontend\ContentObject\ContentObjectRenderer;
 
-/**
- * Class ObjectUtility
- */
 class ObjectUtility extends AbstractUtility
 {
+    /**
+     * @deprecated will be removed with V14
+     */
     public static function getQueryBuilder(string $tableName): QueryBuilder
     {
+        trigger_error('This function will be removed with V14. Instantiate the queryBuilder yourself.', E_USER_DEPRECATED);
         return GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable($tableName);
-    }
-
-    public static function getContentObject(): ContentObjectRenderer
-    {
-        return GeneralUtility::makeInstance(ContentObjectRenderer::class);
     }
 
     /**

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace In2code\Femanager\Controller;
 
 use In2code\Femanager\Domain\Model\User;
+use In2code\Femanager\Domain\Repository\LogRepository;
 use In2code\Femanager\Domain\Repository\UserGroupRepository;
 use In2code\Femanager\Domain\Repository\UserRepository;
 use In2code\Femanager\Domain\Service\SendMailService;
@@ -12,6 +13,7 @@ use In2code\Femanager\Event\AdminConfirmationUserEvent;
 use In2code\Femanager\Event\RefuseUserEvent;
 use In2code\Femanager\Finisher\FinisherRunner;
 use In2code\Femanager\Utility\BackendUserUtility;
+use In2code\Femanager\Utility\BackendUtility;
 use In2code\Femanager\Utility\ConfigurationUtility;
 use In2code\Femanager\Utility\HashUtility;
 use In2code\Femanager\Utility\LocalizationUtility;
@@ -24,25 +26,19 @@ use TYPO3\CMS\Backend\Template\ModuleTemplate;
 use TYPO3\CMS\Backend\Template\ModuleTemplateFactory;
 use TYPO3\CMS\Core\Context\Context;
 use TYPO3\CMS\Core\Context\Exception\AspectNotFoundException;
-use TYPO3\CMS\Core\Domain\Repository\PageRepository;
 use TYPO3\CMS\Core\Exception\SiteNotFoundException;
 use TYPO3\CMS\Core\Http\RequestFactory;
 use TYPO3\CMS\Core\Site\SiteFinder;
-use TYPO3\CMS\Core\Type\Bitmask\Permission;
 use TYPO3\CMS\Core\Type\ContextualFeedbackSeverity;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\CMS\Extbase\Http\ForwardResponse;
 use TYPO3\CMS\Extbase\Persistence\Generic\PersistenceManager;
 
 /**
- * Class UserBackendController
- *
  * @SuppressWarnings(PHPMD.CouplingBetweenObjects)
  */
 class UserBackendController extends AbstractController
 {
-    protected int $configPID;
-
     protected ModuleTemplate $moduleTemplate;
 
     public function __construct(
@@ -52,8 +48,17 @@ class UserBackendController extends AbstractController
         protected SendMailService $sendMailService,
         protected FinisherRunner $finisherRunner,
         protected LogUtility $logUtility,
-        protected ModuleTemplateFactory $moduleTemplateFactory
+        protected ModuleTemplateFactory $moduleTemplateFactory,
+        protected LogRepository $logRepository
     ) {
+        parent::__construct(
+            $this->userRepository,
+            $this->userGroupRepository,
+            $this->persistenceManager,
+            $this->sendMailService,
+            $this->finisherRunner,
+            $this->logUtility
+        );
     }
 
     protected function initializeAction(): void
@@ -75,20 +80,46 @@ class UserBackendController extends AbstractController
         $uriBuilder = GeneralUtility::makeInstance(UriBuilder::class);
         $this->moduleTemplate->assignMultiple(
             [
-                'users' => $this->userRepository->findAllInBackend($filter),
+                'users' => $this->userRepository->findOnPageByBackendFilter($filter),
                 'moduleUri' => $uriBuilder->buildUriFromRoute('tce_db'),
                 'action' => 'list',
-                'loginAsEnabled' => $this->loginAsEnabled(),
+                'loginAsEnabled' => ConfigurationUtility::isEnableLoginAsActive(),
+                'logEnabled' => !ConfigurationUtility::isDisableLogActive(),
                 'configPID' => $this->getConfigPID(),
+                'currentSelectedPid' => BackendUtility::getPageIdentifier() ?? 0,
+                'filter' => $filter,
             ]
         );
         return $this->moduleTemplate->renderResponse('UserBackend/List');
     }
 
+    public function logAction(array $filter = []): ResponseInterface
+    {
+        $this->moduleTemplate->assignMultiple([
+                'users' => $this->userRepository->findAllWithoutDeleted(),
+                'groupedLogEntries' => $this->groupLogEntriesDay($this->logRepository->findByFilter($filter)),
+                'action' => 'log',
+                'logEnabled' => !ConfigurationUtility::isDisableLogActive(),
+                'filter' => array_filter($filter)
+            ]
+        );
+
+        return $this->moduleTemplate->renderResponse('UserBackend/Log');
+    }
+
+    protected function groupLogEntriesDay(iterable $logEntries): iterable
+    {
+        $targetStructure = [];
+        foreach ($logEntries as $entry) {
+            $timestampDay = strtotime($entry->getTstamp()->format('Y-m-d'));
+            $targetStructure[$timestampDay][] = $entry;
+        }
+        krsort($targetStructure);
+        return $targetStructure;
+    }
+
     public function confirmationAction(array $filter = []): ResponseInterface
     {
-        $this->configPID = $this->getConfigPID();
-
         $uriBuilder = GeneralUtility::makeInstance(UriBuilder::class);
 
         $this->moduleTemplate->assignMultiple(
@@ -98,7 +129,9 @@ class UserBackendController extends AbstractController
                     ConfigurationUtility::isBackendModuleFilterUserConfirmation()
                 ),
                 'moduleUri' => $uriBuilder->buildUriFromRoute('tce_db'),
+                'logEnabled' => !ConfigurationUtility::isDisableLogActive(),
                 'action' => 'confirmation',
+                'filter' => $filter,
             ]
         );
         return $this->moduleTemplate->renderResponse('UserBackend/Confirmation');
@@ -106,7 +139,7 @@ class UserBackendController extends AbstractController
 
     public function userLogoutAction(User $user): ResponseInterface
     {
-        if ($this->checkPageAndUserAccess($user) === false) {
+        if (!$this->checkPageAndUserAccess($user)) {
             return new ForwardResponse('list');
         }
 
@@ -117,11 +150,9 @@ class UserBackendController extends AbstractController
 
     public function confirmUserAction(int $userIdentifier): ResponseInterface
     {
-        $this->configPID = $this->getConfigPID();
-
         $user = $this->userRepository->findByUid($userIdentifier);
 
-        if ($this->checkPageAndUserAccess($user) === false) {
+        if (is_null($user) || !$this->checkPageAndUserAccess($user)) {
             return new ForwardResponse('list');
         }
 
@@ -153,34 +184,20 @@ class UserBackendController extends AbstractController
         return $this->redirect('confirmation');
     }
 
+    /**
+     * @deprecated will be removed with V14 use hasBackendUserAccessToFeUserStoragePage() from the BackendUserUtility
+     */
     private function checkPageAndUserAccess($user): bool
     {
-        if ($user === null) {
-            return false;
-        }
-
-        if (BackendUserUtility::isAdminAuthentication() === false) {
-            // check if the current BE User has access to the page where the FE_User is stored
-            $pageRepository = GeneralUtility::makeInstance(PageRepository::class);
-            $pageRow = $pageRepository->getPage($user->getPid());
-            if ($GLOBALS['BE_USER']->doesUserHaveAccess(
-                $pageRow,
-                Permission::PAGE_SHOW
-            ) === false) {
-                return false;
-            }
-        }
-
-        return true;
+        trigger_error('will be removed with V14 use hasBackendUserAccessToFeUserStoragePage()');
+        return BackendUserUtility::hasBackendUserAccessToFeUserStoragePage($user);
     }
 
     public function refuseUserAction(int $userIdentifier): ResponseInterface
     {
-        $this->configPID = $this->getConfigPID();
-
         $user = $this->userRepository->findByUid($userIdentifier);
 
-        if ($this->checkPageAndUserAccess($user) === false) {
+        if (is_null($user) || !$this->checkPageAndUserAccess($user)) {
             return new ForwardResponse('list');
         }
 
@@ -223,6 +240,8 @@ class UserBackendController extends AbstractController
                 ),
                 'moduleUri' => $uriBuilder->buildUriFromRoute('tce_db'),
                 'action' => 'listOpenUserConfirmations',
+                'logEnabled' => !ConfigurationUtility::isDisableLogActive(),
+                'filter' => $filter,
             ]
         );
         return $this->moduleTemplate->renderResponse('UserBackend/ListOpenUserConfirmations');
@@ -232,7 +251,7 @@ class UserBackendController extends AbstractController
     {
         $user = $this->userRepository->findByUid($userIdentifier);
 
-        if ($this->checkPageAndUserAccess($user) === false) {
+        if (is_null($user) || !$this->checkPageAndUserAccess($user)) {
             return new ForwardResponse('list');
         }
 
@@ -249,8 +268,16 @@ class UserBackendController extends AbstractController
         return $this->redirect('listOpenUserConfirmations');
     }
 
+    /**
+     * @deprecated will be changed to protected in v14.0.
+     */
     public function getConfigPID(): int
     {
+        trigger_error(
+            'Method getConfigPID() will be protected in femanager v14. Stop calling this method from outside of this class.',
+            E_USER_DEPRECATED
+        );
+
         if (isset($this->moduleConfig['settings.']['configPID']) && $this->moduleConfig['settings.']['configPID'] > 0) {
             return (int)$this->moduleConfig['settings.']['configPID'];
         }
@@ -273,15 +300,22 @@ class UserBackendController extends AbstractController
      * @throws SiteNotFoundException
      *
      * @SuppressWarnings(PHPMD.Superglobals)
+     *
+     * @deprecated will be changed to protected or deleted in v14.0.
      */
     public function getFrontendRequestResult(string $status, int $userIdentifier, User $user)
     {
+        trigger_error(
+            'Method getFrontendRequestResult() will be protected / removed in femanager v14. Stop calling this method from outside of this class.',
+            E_USER_DEPRECATED
+        );
+
         /** @var SiteFinder $siteFinder */
         $siteFinder = GeneralUtility::makeInstance(SiteFinder::class);
 
-        $site = $siteFinder->getSiteByPageId($this->configPID);
+        $site = $siteFinder->getSiteByPageId($this->getConfigPID());
         $url = $site->getRouter()->generateUri(
-            $this->configPID,
+            $this->getConfigPID(),
             [
                 'tx_femanager_registration' => [
                     'user' => $userIdentifier,
@@ -317,9 +351,14 @@ class UserBackendController extends AbstractController
      * @throws AspectNotFoundException
      *
      * @SuppressWarnings(PHPMD.Superglobals)
+     * @deprecated will be removed with V14 use ConfigurationUtility::isEnableLoginAsActive() instead
      */
     private function loginAsEnabled(): bool
     {
+        trigger_error(
+            'will be removed with V14 use ConfigurationUtility::isEnableLoginAsActive() instead',
+            E_USER_DEPRECATED
+        );
         $context = GeneralUtility::makeInstance(Context::class);
         if ($context->getPropertyFromAspect('backend.user', 'isAdmin') === true) {
             return true;

@@ -8,7 +8,7 @@ use In2code\Femanager\Utility\ConfigurationUtility;
 use TYPO3Fluid\Fluid\Core\ViewHelper\AbstractViewHelper;
 
 /**
- * Class IsConfirmationModuleActivatedViewHelper
+ * @deprecated will be removed with V14
  */
 class IsConfirmationModuleActivatedViewHelper extends AbstractViewHelper
 {

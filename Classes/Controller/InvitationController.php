@@ -47,7 +47,7 @@ class InvitationController extends AbstractFrontendController
         }
 
         $this->view->assign('allUserGroups', $this->allUserGroups);
-        $this->assignForAll();
+        $this->addDefaultViewVariables();
         return $this->htmlResponse();
     }
 
@@ -88,6 +88,19 @@ class InvitationController extends AbstractFrontendController
         $user = UserUtility::fallbackUsernameAndPassword($user);
         if (ConfigurationUtility::getValue('invitation/fillEmailWithUsername', $this->settings) === '1') {
             $user->setEmail($user->getUsername());
+        }
+
+        // revalidate user after modification
+        $validationErrors = $this->validationService->doServersideValidation($user, $this->request);
+        if (!empty($validationErrors)) {
+            foreach ($validationErrors as $validationError) {
+                $this->addFlashMessage(
+                    $validationError->getMessage(),
+                    $validationError->getTitle(),
+                    $validationError->getSeverity()
+                );
+            }
+            return $this->redirect('new');
         }
 
         UserUtility::hashPassword(
@@ -193,7 +206,7 @@ class InvitationController extends AbstractFrontendController
             ]
         );
 
-        $this->assignForAll();
+        $this->addDefaultViewVariables();
         return $this->htmlResponse();
     }
 

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace In2code\Femanager\Controller;
 
+use DateTime;
+use Exception;
 use In2code\Femanager\DataProcessor\DataProcessorRunner;
 use In2code\Femanager\Domain\Model\Log;
 use In2code\Femanager\Domain\Model\User;
@@ -15,7 +17,6 @@ use In2code\Femanager\Event\FinalUpdateEvent;
 use In2code\Femanager\Finisher\FinisherRunner;
 use In2code\Femanager\Utility\BackendUtility;
 use In2code\Femanager\Utility\ConfigurationUtility;
-use In2code\Femanager\Utility\FrontendUtility;
 use In2code\Femanager\Utility\HashUtility;
 use In2code\Femanager\Utility\LocalizationUtility;
 use In2code\Femanager\Utility\LogUtility;
@@ -23,6 +24,8 @@ use In2code\Femanager\Utility\StringUtility;
 use In2code\Femanager\Utility\UserUtility;
 use Psr\Http\Message\ResponseInterface;
 use TYPO3\CMS\Backend\Utility\BackendUtility as BackendUtilityCore;
+use TYPO3\CMS\Core\Context\Context;
+use TYPO3\CMS\Core\Crypto\HashService;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Http\ApplicationType;
 use TYPO3\CMS\Core\Http\PropagateResponseException;
@@ -120,9 +123,15 @@ abstract class AbstractController extends ActionController
     /**
      * Prefix method to createAction()
      *        Create Confirmation from Admin is not necessary
+     * @deprecated will be changed to protected / removed in v14.0.
      */
     public function createAllConfirmed(User $user): ResponseInterface|null
     {
+        trigger_error(
+            'Method createAllConfirmed() will be protected / removed in femanager v14',
+            E_USER_DEPRECATED
+        );
+
         $this->userRepository->add($user);
         $this->persistenceManager->persistAll();
         $this->processUploadedFiles($user);
@@ -207,9 +216,16 @@ abstract class AbstractController extends ActionController
     /**
      * Prefix method to updateAction()
      *        Update Confirmation from Admin is not necessary
+     *
+     * @deprecated will be changed to protected / removed in v14.0.
      */
     public function updateAllConfirmed(User $user)
     {
+        trigger_error(
+            'Method createAllConfirmed() will be protected / removed in femanager v14',
+            E_USER_DEPRECATED
+        );
+
         // send notify email to admin
         $existingUser = clone $this->userRepository->findByUid($user->getUid());
 
@@ -249,10 +265,16 @@ abstract class AbstractController extends ActionController
     /**
      * Prefix method to updateAction(): Update must be confirmed by Admin
      *
+     * @deprecated will be changed to protected / removed in v14.0.
      * @param User $user
      */
     public function updateRequest($user): ResponseInterface|null
     {
+        trigger_error(
+            'Method updateRequest() will be protected / removed in femanager v14',
+            E_USER_DEPRECATED
+        );
+
         if ($this->settings['edit']['confirmByAdmin'] ?? null) {
             $dirtyProperties = UserUtility::getDirtyPropertiesFromUser($user);
             $user = UserUtility::rollbackUserWithChangeRequest($user, $dirtyProperties);
@@ -298,16 +320,23 @@ abstract class AbstractController extends ActionController
      *
      * @SuppressWarnings(PHPMD.UnusedFormalParameter)
      * @TODO: Remove Suppress when login is reactivated
+     *
+     * @deprecated will be changed to protected / removed in v14.0.
      * @SuppressWarnings(PHPMD.BooleanArgumentFlag)
      */
     public function finalCreate(
-        \In2code\Femanager\Domain\Model\User $user,
+        User $user,
         string $action,
         string $redirectByActionName,
         bool $login = true,
         string $status = '',
         bool $backend = false
     ): ResponseInterface|null {
+        trigger_error(
+            'Method finalCreate() will be protected / removed in femanager v14',
+            E_USER_DEPRECATED
+        );
+
         $this->loginPreflight($user, $login);
         $variables = ['user' => $user, 'settings' => $this->settings, 'hash' => HashUtility::createHashForUser($user)];
         if (ConfigurationUtility::getValue(
@@ -350,7 +379,10 @@ abstract class AbstractController extends ActionController
                 'createNotify',
                 StringUtility::makeEmailArray(
                     $createAdminNotify,
-                    ConfigurationUtility::getValue('new./email./createAdminNotify./receiver./name./value', $this->config)
+                    ConfigurationUtility::getValue(
+                        'new./email./createAdminNotify./receiver./name./value',
+                        $this->config
+                    )
                 ),
                 StringUtility::makeEmailArray($user->getEmail(), $user->getUsername()),
                 $this->contentObject->cObjGetSingle(
@@ -364,7 +396,12 @@ abstract class AbstractController extends ActionController
         }
 
         $this->eventDispatcher->dispatch(new FinalCreateEvent($user, $action));
-        $this->finisherRunner->callFinishers($user, $this->actionMethodName, $this->settings, $this->contentObject);
+        $this->finisherRunner->callFinishers(
+            $user,
+            $this->actionMethodName,
+            $this->settings,
+            $this->contentObject
+        );
 
         if ($backend === false) {
             $redirectTarget = $this->redirectByAction(
@@ -452,7 +489,11 @@ abstract class AbstractController extends ActionController
     protected function isSpoof(User $user, int $uid, string $receivedToken): bool
     {
         $errorOnProfileUpdate = false;
-        $knownToken = \TYPO3\CMS\Core\Utility\GeneralUtility::makeInstance(\TYPO3\CMS\Core\Crypto\HashService::class)->hmac((string)$user->getUid(), (string)($user->getCrdate() ?: new \DateTime('01.01.1970'))->getTimestamp());
+        $knownToken = GeneralUtility::makeInstance(HashService::class)
+            ->hmac(
+                (string)$user->getUid(),
+                (string)($user->getCrdate() ?: new DateTime('01.01.1970'))->getTimestamp()
+            );
 
         //check if the params are valid
         if (!hash_equals($knownToken, $receivedToken)) {
@@ -469,27 +510,35 @@ abstract class AbstractController extends ActionController
 
     /**
      * Assigns all values, which should be available in all views
+     *
+     * @deprecated will be changed to protected / removed in v14.0.
      */
-    public function assignForAll(): void
+    public function addDefaultViewVariables(): void
     {
-        $jsLabels = [
-            'loading_states' => LocalizationUtility::translate('js.loading_states'),
-            'please_choose' => LocalizationUtility::translate('pleaseChoose'),
-        ];
+        trigger_error(
+            'Method addDefaultViewVariables() will be protected / removed in femanager v14',
+            E_USER_DEPRECATED
+        );
+
         $this->view->assignMultiple(
             [
-                'languageUid' => FrontendUtility::getFrontendLanguageUid(),
+                'languageUid' => GeneralUtility::makeInstance(Context::class)->getAspect('language')->getId(),
                 'storagePid' => $this->allConfig['persistence']['storagePid'] ?? 0,
-                'Pid' => FrontendUtility::getCurrentPid(),
+                'Pid' => $this->request->getAttribute('frontend.page.information')->getId(),
                 'data' => $this->contentObject->data,
                 'useStaticInfoTables' => ExtensionManagementUtility::isLoaded('static_info_tables'),
-                'jsLabels' => json_encode($jsLabels, JSON_THROW_ON_ERROR),
+                'jsLabels' => json_encode(
+                    [
+                        'loading_states' => LocalizationUtility::translate('js.loading_states'),
+                        'please_choose' => LocalizationUtility::translate('pleaseChoose'),
+                    ]
+                ),
             ]
         );
     }
 
     /**
-     * @throws \Exception
+     * @throws Exception
      * @SuppressWarnings(PHPMD.Superglobals)
      */
     protected function initializeAction(): void
@@ -603,14 +652,24 @@ abstract class AbstractController extends ActionController
 
     /**
      * Send email to user for confirmation
+     *
+     * @deprecated will be changed to protected / removed in v14.0.
      */
     public function sendCreateUserConfirmationMail(User $user): void
     {
+        trigger_error(
+            'Method sendCreateUserConfirmationMail() will be protected / removed in femanager v14',
+            E_USER_DEPRECATED
+        );
+
         $this->sendMailService->send(
             'createUserConfirmation',
             StringUtility::makeEmailArray($user->getEmail(), $user->getUsername()),
             StringUtility::makeEmailArray(
-                ConfigurationUtility::getValue('new./email./createUserConfirmation./sender./email./value', $this->config),
+                ConfigurationUtility::getValue(
+                    'new./email./createUserConfirmation./sender./email./value',
+                    $this->config
+                ),
                 ConfigurationUtility::getValue('new./email./createUserConfirmation./sender./name./value', $this->config)
             ),
             $this->contentObject->cObjGetSingle(
@@ -626,8 +685,16 @@ abstract class AbstractController extends ActionController
         );
     }
 
+    /**
+     * @deprecated will be changed to protected / removed in v14.0.
+     */
     public function sendCreateUserConfirmationMailFromBackend(User $user): void
     {
+        trigger_error(
+            'Method sendCreateUserConfirmationMailFromBackend() will be protected / removed in femanager v14',
+            E_USER_DEPRECATED
+        );
+
         $receiver = StringUtility::makeEmailArray($user->getEmail(), $user->getUsername());
         $sender = StringUtility::makeEmailArray(
             ConfigurationUtility::getValue('new./email./createUserConfirmation./sender./email./value', $this->config),
@@ -652,7 +719,14 @@ abstract class AbstractController extends ActionController
 
     protected function validateMissingCaptcha(string $redirectAction): void
     {
-        if ($this->isCaptchaEnabled() && $this->request->getAttribute('extbase')->getArgument('captcha') === '') {
+        if (!$this->isCaptchaEnabled()) {
+            return;
+        }
+
+        $params = $this->request->getAttribute('extbase');
+        $captchaValue = ($params?->hasArgument('captcha') ?? false) ? $params->getArgument('captcha') : null;
+
+        if (empty($captchaValue)) {
             $this->addFlashMessage(
                 LocalizationUtility::translate('validationErrorCaptcha'),
                 '',
@@ -666,9 +740,8 @@ abstract class AbstractController extends ActionController
     {
         $extbaseAttribute = $this->request->getAttribute('extbase');
         $controllerName = strtolower($extbaseAttribute->getControllerName());
+        $isCaptchaValidationEnabled = (bool)((int)($this->config[$controllerName . '.']['validation.']['captcha.']['captcha'] ?? 0));
 
-        return $extbaseAttribute->hasArgument('captcha') &&
-            $this->config[$controllerName . '.']['validation.']['captcha.']['captcha'] == true &&
-            ExtensionManagementUtility::isLoaded('sr_freecap');
+        return $isCaptchaValidationEnabled && ExtensionManagementUtility::isLoaded('sr_freecap');
     }
 }
