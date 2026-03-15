@@ -18,7 +18,7 @@
 								</f:link.action>
 								<f:if condition="{femanager:be.IsResendUserConfirmationRequestActivated()}">
 									<f:link.action action="listOpenUserConfirmations" class="btn  {f:if(condition: '{action}==\'listOpenUserConfirmations\'',then:' btn-primary', else:' btn-default')}">
-										<f:translate key="BackendSelectionList">Open User Confirmtions</f:translate>
+										<f:translate key="BackendSelectionList">Open User Confirmations</f:translate>
 									</f:link.action>
 								</f:if>
 							</f:if>
@@ -44,13 +44,7 @@
 			</div>
 		</div>
 		<div class="module-body femanager-backend">
-			<f:flashMessages as="flashMessages">
-				<div class="alert alert-warning">
-					<f:for each="{flashMessages}" as="flashMessage">
-						<div class="message-body">{flashMessage.message}</div>
-					</f:for>
-				</div>
-			</f:flashMessages>
+			<f:flashMessages />
 
 			<f:render section="main" />
 		</div>

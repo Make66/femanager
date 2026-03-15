@@ -240,7 +240,7 @@ class NewController extends AbstractFrontendController
             $event = new UserWasConfirmedByAdminEvent($request, $user);
             $this->eventDispatcher->dispatch($event);
             // Backend request - return JSON response
-            return new JsonResponse(['status' => 'okay']);
+            throw new PropagateResponseException(new JsonResponse(['status' => 'okay']), 1773131083);
         }
 
         if ($furtherFunctions) {
@@ -513,8 +513,13 @@ class NewController extends AbstractFrontendController
      */
     public function resendConfirmationMailAction(): ResponseInterface
     {
+        // data may either come from a registration or resendconfirmationmail plugin
         // @todo find a better way to fetch the data
-        $result = $this->request->getParsedBody()['tx_femanager_resendconfirmationmail'] ?? $this->request->getQueryParams()['tx_femanager_resendconfirmationmail'] ?? null;
+        $result = $this->request->getParsedBody()['tx_femanager_resendconfirmationmail']
+            ?? $this->request->getQueryParams()['tx_femanager_resendconfirmationmail']
+            ?? $this->request->getParsedBody()['tx_femanager_registration']
+            ?? $this->request->getQueryParams()['tx_femanager_registration']
+            ?? null;
         if (is_array($result)) {
             $mail = $result['user']['email'] ?? '';
             if ($mail && GeneralUtility::validEmail($mail)) {
